@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>KEK</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+:root {
+  --green:   #00ff88;
+  --green2:  #00cc66;
+  --dim:     #005533;
+  --dimmer:  #002211;
+  --amber:   #ffaa00;
+  --red:     #ff3333;
+  --bg:      #03080f;
+  --panel:   rgba(0,10,5,0.88);
+  --border:  rgba(0,255,136,0.18);
+  --glow:    0 0 12px rgba(0,255,136,0.25);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--green);
+  font-family: 'Share Tech Mono', monospace;
+  overflow: hidden;
+  cursor: none;
+}
+
+canvas { display: block; position: absolute; inset: 0; }
+
+/* ── CUSTOM CURSOR ── */
+#cursor {
+  position: fixed; pointer-events: none; z-index: 9999;
+  width: 20px; height: 20px;
+  border: 1px solid var(--green);
+  transform: translate(-50%,-50%);
+  transition: width 0.1s, height 0.1s, border-color 0.1s;
+}
+#cursor::before, #cursor::after {
+  content:''; position:absolute; background: var(--green);
+}
+#cursor::before { width:1px; height:8px; top:50%; left:50%; transform:translate(-50%,-50%); }
+#cursor::after  { width:8px; height:1px; top:50%; left:50%; transform:translate(-50%,-50%); }
+#cursor.hover { width:32px; height:32px; border-color: var(--amber); }
+
+/* ── SCANLINES OVERLAY ── */
+#scanlines {
+  position: fixed; inset: 0; pointer-events: none; z-index: 500;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.08) 2px,
+    rgba(0,0,0,0.08) 4px
+  );
+}
+
+/* ── CRT VIGNETTE ── */
+#vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 499;
+  background: radial-gradient(ellipse at center,
+    transparent 55%,
+    rgba(0,0,0,0.7) 100%
+  );
+}
+
+/* ── MAIN LAYOUT ── */
+#ui {
+  position: absolute; top: 0; left: 0; z-index: 100;
+  width: 240px; height: 100vh;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  padding: 0;
+  box-shadow: var(--glow);
+}
+
+/* header bar */
+.panel-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--dimmer);
+}
+.panel-title {
+  font-family: 'VT323', monospace;
+  font-size: 22px; letter-spacing: 3px;
+  color: var(--green);
+  text-shadow: 0 0 10px var(--green);
+  line-height: 1;
+}
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+.panel-title_0 {
+  font-family: 'VT323', monospace;
+  font-size: clamp(10px, 2vw, 10px);
+  letter-spacing:5px;
+  color: var(--white);
+  text-shadow: 
+    0 0 5px var(--white),
+    0 0 10px var(--white),
+    0 0 20px rgba(255,255,255,0.6);
+  line-height: 1.1;
+  
+  animation: flicker .25s infinite;
+}
+.panel-sub {
+  font-size: 9px; letter-spacing: 2px; color: var(--dim);
+  margin-top: 3px; text-transform: uppercase;
+}
+
+/* status row */
+.status-row {
+  display: flex; gap: 6px; align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px; letter-spacing: 1px;
+}
+.status-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--green);
+  animation: blink 1.4s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+.status-text { color: var(--dim); }
+.status-val  { color: var(--green); margin-left: auto; }
+
+/* controls */
+.controls-body {
+  flex: 1; overflow-y: auto; padding: 12px 16px;
+}
+.controls-body::-webkit-scrollbar { width: 3px; }
+.controls-body::-webkit-scrollbar-track { background: transparent; }
+.controls-body::-webkit-scrollbar-thumb { background: var(--dim); }
+
+.ctrl-block { margin-bottom: 16px; }
+.ctrl-label {
+  font-size: 9px; letter-spacing: 2px; color: var(--dim);
+  text-transform: uppercase; margin-bottom: 6px;
+  display: flex; justify-content: space-between;
+}
+.ctrl-label span { color: var(--green); font-size: 11px; }
+
+input[type=range] {
+  -webkit-appearance: none; width: 100%; height: 2px;
+  background: var(--dim); outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 10px; height: 10px;
+  background: var(--green); border-radius: 0;
+  box-shadow: 0 0 8px var(--green);
+}
+input[type=range]:hover { background: var(--green2); }
+
+/* version selector */
+.ver-grid {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 4px;
+  margin-bottom: 16px;
+}
+.ver-btn {
+  background: transparent; border: 1px solid var(--border);
+  color: var(--dim); font-family: 'Share Tech Mono', monospace;
+  font-size: 11px; padding: 7px 0; cursor: pointer;
+  letter-spacing: 1px; text-transform: uppercase;
+  transition: all 0.12s;
+}
+.ver-btn:hover { border-color: var(--green); color: var(--green); }
+.ver-btn.active {
+  background: var(--green); color: #000;
+  border-color: var(--green);
+  box-shadow: 0 0 10px var(--green);
+}
+
+/* bottom readout */
+.panel-footer {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--dimmer);
+  font-size: 9px; letter-spacing: 1px;
+}
+.readout-row {
+  display: flex; justify-content: space-between;
+  margin-bottom: 3px; color: var(--dim);
+}
+.readout-row span { color: var(--green2); }
+
+/* ── INFO TERMINAL (bottom right) ── */
+#terminal {
+  position: absolute; bottom: 20px; right: 20px; z-index: 200;
+  width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  box-shadow: var(--glow);
+  font-size: 12px;
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  transform: translateY(110%);
+  opacity: 0;
+  transition: transform 0.35s cubic-bezier(0.16,1,0.3,1), opacity 0.25s;
+}
+#terminal.show { transform: translateY(0); opacity: 1; }
+
+.term-bar {
+  background: var(--dimmer); padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px;
+}
+.term-bar-title {
+  font-family: 'VT323', monospace; font-size: 16px; letter-spacing: 2px;
+  color: var(--green); flex: 1;
+}
+.term-close {
+  background: none; border: 1px solid var(--border);
+  color: var(--dim); font-family: 'Share Tech Mono', monospace;
+  font-size: 10px; padding: 2px 6px; cursor: pointer;
+  letter-spacing: 1px;
+}
+.term-close:hover { border-color: var(--red); color: var(--red); }
+
+.term-body { padding: 12px; }
+.term-line {
+  display: flex; gap: 8px; margin-bottom: 6px; font-size: 11px;
+}
+.term-prompt { color: var(--dim); }
+.term-key    { color: var(--amber); min-width: 70px; }
+.term-val    { color: var(--green); }
+.term-desc   { color: var(--dim); font-size: 10px; margin-top: 4px; line-height: 1.5; padding-top: 6px; border-top: 1px solid var(--border); }
+
+.term-more-btn {
+  margin-top: 10px; background: none;
+  border: 1px solid var(--green2); color: var(--green2);
+  font-family: 'Share Tech Mono', monospace; font-size: 10px;
+  letter-spacing: 2px; padding: 5px 10px; cursor: pointer;
+  display: block; width: 100%; text-align: left;
+  transition: background 0.1s;
+}
+.term-more-btn:hover { background: rgba(0,255,136,0.08); }
+
+.term-extra {
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.3s ease;
+  font-size: 10px; color: var(--dim); line-height: 1.6;
+}
+.term-extra.open { max-height: 120px; margin-top: 8px; }
+
+/* ── TOP BAR ── */
+#topbar {
+  position: absolute; top: 0; left: 240px; right: 0; z-index: 100;
+  height: 36px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 16px; gap: 20px;
+}
+.top-item { font-size: 9px; letter-spacing: 2px; color: var(--dim); text-transform: uppercase; }
+.top-item span { color: var(--green); margin-left: 6px; }
+.top-sep { width: 1px; height: 16px; background: var(--border); }
+.top-right { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+
+/* blinking clock */
+#clock { font-family: 'VT323', monospace; font-size: 18px; color: var(--green); letter-spacing: 2px; }
+
+/* ── PARTICLE COUNT BADGE ── */
+#pcBadge {
+  position: absolute; top: 50px; right: 20px; z-index: 200;
+  font-family: 'VT323', monospace; font-size: 48px;
+  color: rgba(0,255,136,0.07);
+  pointer-events: none; letter-spacing: 4px;
+  line-height: 1;
+}
+</style>
+</head>
+<body>
+
+<div id="scanlines"></div>
+<div id="vignette"></div>
+<div id="cursor"></div>
+<canvas id="canvas"></canvas>
+
+<!-- LEFT PANEL -->
+<div id="ui">
+  <div class="panel-header">
+    <div class="panel-title_0">ALLIED</div>
+    <div class="panel-title">PATTERNA</div>
+    <div class="panel-sub">particle dynamics / S RAHMAN</div>
+  </div>
+
+  <div class="status-row">
+    <div class="status-dot"></div>
+    <div class="status-text">SYS ONLINE</div>
+    <div class="status-val" id="fpsDisp">60 FPS</div>
+  </div>
+
+  <div class="controls-body">
+
+    <div class="ctrl-block">
+      <div class="ctrl-label">MODE SELECT</div>
+      <div class="ver-grid">
+        <button class="ver-btn" onclick="setVersion(0)">LISS</button>
+        <button class="ver-btn active" onclick="setVersion(1)">HARM</button>
+        <button class="ver-btn" onclick="setVersion(2)">ATTR</button>
+        <button class="ver-btn" onclick="setVersion(3)">CHAOS</button>
+        <button class="ver-btn" onclick="setVersion(4)">WAVE</button>
+        <button class="ver-btn" onclick="setVersion(5)">SWRM</button>
+      </div>
+    </div>
+
+    <div class="ctrl-block">
+      <div class="ctrl-label">PARTICLES <span id="countVal">25</span></div>
+      <input type="range" id="count" min="1" max="120" value="25"
+             oninput="document.getElementById('countVal').textContent=this.value">
+    </div>
+
+    <div class="ctrl-block">
+      <div class="ctrl-label">FREQ X <span id="fxVal">3</span></div>
+      <input type="range" id="fx" min="1" max="10" value="3"
+             oninput="document.getElementById('fxVal').textContent=this.value">
+    </div>
+
+    <div class="ctrl-block">
+      <div class="ctrl-label">FREQ Y <span id="fyVal">2</span></div>
+      <input type="range" id="fy" min="1" max="10" value="2"
+             oninput="document.getElementById('fyVal').textContent=this.value">
+    </div>
+
+    <div class="ctrl-block">
+      <div class="ctrl-label">FIELD STR <span id="fieldVal">1.0</span></div>
+      <input type="range" id="field" min="0" max="5" step="0.1" value="1"
+             oninput="document.getElementById('fieldVal').textContent=(+this.value).toFixed(1)">
+    </div>
+
+    <div class="ctrl-block">
+      <div class="ctrl-label">CHAOS <span id="chaosVal">0.3</span></div>
+      <input type="range" id="chaos" min="0" max="2" step="0.1" value="0.3"
+             oninput="document.getElementById('chaosVal').textContent=(+this.value).toFixed(1)">
+    </div>
+
+    <div class="ctrl-block">
+      <div class="ctrl-label">SPEED <span id="speedVal">1.0</span></div>
+      <input type="range" id="speed" min="0.1" max="3" step="0.1" value="1"
+             oninput="document.getElementById('speedVal').textContent=(+this.value).toFixed(1)">
+    </div>
+
+    <div class="ctrl-block">
+      <div class="ctrl-label">TRAIL LEN <span id="trailVal">80</span></div>
+      <input type="range" id="trailLen" min="5" max="200" value="80"
+             oninput="document.getElementById('trailVal').textContent=this.value">
+    </div>
+
+  </div>
+
+  <div class="panel-footer">
+    <div class="readout-row">PARTICLES <span id="activeCount">25</span></div>
+    <div class="readout-row">AVG VEL   <span id="avgVel">0.00</span></div>
+    <div class="readout-row">FIELD E   <span id="fieldE">0.00</span></div>
+  </div>
+</div>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="top-item">MODE <span id="modeLabel">HARMONIC</span></div>
+  <div class="top-sep"></div>
+  <div class="top-item">T <span id="tDisp">0.000</span></div>
+  <div class="top-sep"></div>
+  <div class="top-item">ENTROPY <span id="entropyDisp">0.00</span></div>
+  <div class="top-right">
+    <div class="top-item">PATTERNA / SYS-6</div>
+    <div class="top-sep"></div>
+    <div id="clock">00:00:00</div>
+  </div>
+</div>
+
+<!-- PARTICLE COUNT WATERMARK -->
+<div id="pcBadge" id="pcBadge">025</div>
+
+<!-- INFO TERMINAL -->
+<div id="terminal">
+  <div class="term-bar">
+    <div class="term-bar-title" id="termTitle">HARMONIC</div>
+    <button class="term-close" onclick="closeTerminal()">[ X ]</button>
+  </div>
+  <div class="term-body">
+    <div class="term-line"><span class="term-prompt">$</span><span class="term-key">TYPE</span><span class="term-val" id="termType">—</span></div>
+    <div class="term-line"><span class="term-prompt">$</span><span class="term-key">DOMAIN</span><span class="term-val" id="termDomain">—</span></div>
+    <div class="term-line"><span class="term-prompt">$</span><span class="term-key">EQUATION</span><span class="term-val" id="termEq">—</span></div>
+    <div class="term-desc" id="termDesc">—</div>
+    <button class="term-more-btn" id="termMoreBtn" onclick="toggleExtra()">▶ EXPAND DETAIL</button>
+    <div class="term-extra" id="termExtra"></div>
+  </div>
+</div>
+
+<script>
+// ── CURSOR ──────────────────────────────────────────────────────────────────
+const cursor = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top  = e.clientY + 'px';
+});
+document.querySelectorAll('button, input').forEach(el => {
+  el.addEventListener('mouseenter', () => cursor.classList.add('hover'));
+  el.addEventListener('mouseleave', () => cursor.classList.remove('hover'));
+});
+
+// ── CLOCK ───────────────────────────────────────────────────────────────────
+function updateClock() {
+  const n = new Date();
+  document.getElementById('clock').textContent =
+    [n.getHours(),n.getMinutes(),n.getSeconds()]
+    .map(v=>String(v).padStart(2,'0')).join(':');
+}
+setInterval(updateClock, 1000); updateClock();
+
+// ── CANVAS SETUP ─────────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
+window.addEventListener('resize', resize); resize();
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let particles = [], t = 0, currentVersion = 1;
+let frameCount = 0, lastFPS = performance.now(), fps = 60;
+
+const MODES = {
+  0: { label:'LISSAJOUS', type:'Parametric',  domain:'Signal Processing', eq:'x=A·sin(fₓt+δ)', desc:'Lissajous figures emerge when two perpendicular oscillations are combined. The ratio of frequencies determines the shape — rational ratios produce closed loops, irrational ratios fill space.', extra:'Named after Jules Antoine Lissajous (1857). Used in electronics to compare frequencies and phase shifts on oscilloscopes.' },
+  1: { label:'HARMONIC',  type:'Oscillatory', domain:'Classical Mechanics', eq:'F=−kx', desc:'Simple harmonic motion — every particle pulled toward a moving target tracing a Lissajous path. The aggregate envelope reveals superposition of multiple standing waves.', extra:'Foundation of wave mechanics, quantum oscillators, and molecular vibration modeling. Hooke\'s Law: restoring force proportional to displacement.' },
+  2: { label:'ATTRACTOR', type:'Gravitational',domain:'Orbital Mechanics', eq:'a=GM/r²', desc:'Inverse-square central force field. Particles orbit the canvas center, building up momentum. High field strength produces tight rosette orbits; low strength creates wide hyperbolic arcs.', extra:'Identical math governs planetary orbits, charged particles in magnetic fields, and gravitational lensing around massive bodies.' },
+  3: { label:'CHAOS',     type:'Chaotic',     domain:'Nonlinear Dynamics', eq:'∂v=sin(ky)·chaos', desc:'A curl-noise velocity field — mathematically deterministic but practically unpredictable. Tiny differences in starting position lead to wildly divergent trajectories (butterfly effect).', extra:'Basis of weather simulation, turbulence modeling, and cryptographic key generation. Related to Lorenz attractor and strange attractors.' },
+  4: { label:'WAVE',      type:'Oscillatory', domain:'Wave Mechanics',    eq:'y=A·sin(kx−ωt)', desc:'Particles are restored to center while simultaneously advected by a traveling sinusoidal field. The result is a visible interference pattern — constructive and destructive overlap.', extra:'Applies to acoustics, optics, and quantum wavefunctions. The superposition principle holds when amplitudes sum linearly.' },
+  5: { label:'SWARM',     type:'Emergent',    domain:'Complex Systems',   eq:'F∝1/r per peer', desc:'Each particle attracts all others with a force scaled by distance. No leader — global coherence emerges purely from local rules. Density waves and rotating sub-clusters appear spontaneously.', extra:'Models flocking birds (Reynolds 1987), fish schooling, neuron firing synchrony, and distributed computing consensus algorithms.' }
+};
+
+// ── PARTICLES ────────────────────────────────────────────────────────────────
+function createParticles(n) {
+  particles = Array.from({length:n}, () => ({
+    x: canvas.width/2  + (Math.random()-0.5)*200,
+    y: canvas.height/2 + (Math.random()-0.5)*200,
+    vx: 0, vy: 0, trail: [],
+    offset: Math.random()*100,
+    hue: Math.random()*60   // slight hue variation per particle
+  }));
+}
+
+function wrap(p) {
+  const W = canvas.width, H = canvas.height;
+  if(p.x < 0) p.x = W; if(p.x > W) p.x = 0;
+  if(p.y < 0) p.y = H; if(p.y > H) p.y = 0;
+}
+function limit(p, max=12) {
+  const s = Math.hypot(p.vx, p.vy);
+  if(s > max) { p.vx *= max/s; p.vy *= max/s; }
+}
+
+// ── PHYSICS SYSTEMS ──────────────────────────────────────────────────────────
+const g = id => document.getElementById(id);
+
+function runV0(p) { // Lissajous
+  const fx=+g('fx').value, fy=+g('fy').value;
+  const W=canvas.width, H=canvas.height;
+  const r = Math.min(W,H)*0.38;
+  const tx = W/2 + r*Math.sin(fx*(t+p.offset));
+  const ty = H/2 + r*Math.sin(fy*(t+p.offset)+Math.PI/4);
+  p.vx = (tx-p.x)*0.18; p.vy = (ty-p.y)*0.18;
+}
+
+function runV1(p) { // Harmonic
+  const fx=+g('fx').value, fy=+g('fy').value;
+  const W=canvas.width, H=canvas.height;
+  const r = Math.min(W,H)*0.35;
+  const tx = W/2 + r*Math.sin(fx*(t+p.offset));
+  const ty = H/2 + r*Math.sin(fy*(t+p.offset));
+  p.vx = (tx-p.x)*0.12; p.vy = (ty-p.y)*0.12;
+}
+
+function runV2(p) { // Attractor
+  const field = +g('field').value;
+  const cx=canvas.width/2, cy=canvas.height/2;
+  const dx=cx-p.x, dy=cy-p.y;
+  const d2 = Math.max(400, dx*dx+dy*dy);
+  const f  = field * 60 / d2;
+  p.vx += dx*f; p.vy += dy*f;
+}
+
+function runV3(p) { // Chaos
+  const chaos = +g('chaos').value;
+  p.vx += Math.sin(p.y * 0.012 + t*0.3) * chaos;
+  p.vy += Math.cos(p.x * 0.012 + t*0.3) * chaos;
+}
+
+function runV4(p) { // Wave
+  const W=canvas.width, H=canvas.height;
+  p.vx += (W/2-p.x)*0.002;
+  p.vy += (H/2-p.y)*0.002;
+  p.vy += Math.sin(p.x*0.015 - t*2)*0.8;
+}
+
+function runV5(p) { // Swarm
+  let ax=0,ay=0;
+  particles.forEach(o => {
+    if(o===p) return;
+    const dx=o.x-p.x, dy=o.y-p.y;
+    const d = Math.sqrt(dx*dx+dy*dy)+0.1;
+    const f = (d<80 ? 0.04 : 0.005) / d;
+    ax+=dx*f; ay+=dy*f;
+  });
+  p.vx+=ax; p.vy+=ay;
+}
+
+// ── DRAW ─────────────────────────────────────────────────────────────────────
+function drawGrid() {
+  // subtle grid behind everything
+  ctx.save();
+  const W=canvas.width, H=canvas.height;
+  const step = 60;
+  ctx.strokeStyle = 'rgba(0,255,136,0.028)';
+  ctx.lineWidth = 1;
+  for(let x=240; x<W; x+=step) {
+    ctx.beginPath(); ctx.moveTo(x,36); ctx.lineTo(x,H); ctx.stroke();
+  }
+  for(let y=36; y<H; y+=step) {
+    ctx.beginPath(); ctx.moveTo(240,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ── TERMINAL ─────────────────────────────────────────────────────────────────
+let termTimeout, termOpen = false, extraOpen = false;
+
+function showTerminal(v) {
+  const m = MODES[v];
+  g('termTitle').textContent  = m.label;
+  g('termType').textContent   = m.type;
+  g('termDomain').textContent = m.domain;
+  g('termEq').textContent     = m.eq;
+  g('termDesc').textContent   = m.desc;
+  g('termExtra').textContent  = m.extra;
+  g('termExtra').classList.remove('open');
+  g('termMoreBtn').textContent = '▶ EXPAND DETAIL';
+  extraOpen = false;
+
+  const term = g('terminal');
+  term.classList.add('show');
+  termOpen = true;
+  clearTimeout(termTimeout);
+  termTimeout = setTimeout(() => { if(!extraOpen) closeTerminal(); }, 4000);
+}
+
+function closeTerminal() {
+  g('terminal').classList.remove('show');
+  termOpen = false;
+}
+
+function toggleExtra() {
+  extraOpen = !extraOpen;
+  g('termExtra').classList.toggle('open', extraOpen);
+  g('termMoreBtn').textContent = extraOpen ? '▼ COLLAPSE' : '▶ EXPAND DETAIL';
+  clearTimeout(termTimeout); // stay open while expanded
+}
+
+// ── VERSION SWITCH ───────────────────────────────────────────────────────────
+function setVersion(v) {
+  currentVersion = v;
+  const m = MODES[v];
+  g('modeLabel').textContent = m.label;
+  document.querySelectorAll('.ver-btn').forEach((b,i) => b.classList.toggle('active', i===v));
+  showTerminal(v);
+}
+
+// ── MAIN LOOP ────────────────────────────────────────────────────────────────
+const runFns = [runV0, runV1, runV2, runV3, runV4, runV5];
+
+let totalVel = 0, totalField = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  // FPS
+  frameCount++;
+  const now = performance.now();
+  if(now - lastFPS >= 800) {
+    fps = Math.round(frameCount * 1000 / (now - lastFPS));
+    frameCount = 0; lastFPS = now;
+    g('fpsDisp').textContent = fps + ' FPS';
+    g('fpsDisp').style.color = fps < 30 ? 'var(--red)' : fps < 50 ? 'var(--amber)' : 'var(--green)';
+  }
+
+  const speed  = +g('speed').value;
+  const tLen   = +g('trailLen').value;
+  t += 0.01 * speed;
+
+  // fade
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = 'rgba(3,8,15,0.085)';
+  ctx.fillRect(0,0,W,H);
+
+  drawGrid();
+
+  // sync particle count
+  const count = +g('count').value;
+  if(particles.length !== count) createParticles(count);
+
+  totalVel = 0; totalField = 0;
+
+  particles.forEach(p => {
+    runFns[currentVersion](p);
+    p.vx *= 0.94; p.vy *= 0.94;
+    p.x  += p.vx; p.y  += p.vy;
+    wrap(p); limit(p);
+
+    const spd = Math.hypot(p.vx, p.vy);
+    totalVel   += spd;
+    totalField += spd * spd * 0.5;
+
+    p.trail.push({x:p.x, y:p.y, s:spd});
+    if(p.trail.length > tLen) p.trail.shift();
+
+    // draw trail
+    const tl = p.trail.length;
+    for(let i=1; i<tl; i++) {
+      const a = p.trail[i-1], b = p.trail[i];
+      const alpha = (i/tl) * 0.85;
+      const hue   = 140 + b.s * 14 + p.hue; // green→cyan→blue as speed rises
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = `hsla(${hue},100%,${55+b.s*3}%,${alpha})`;
+      ctx.lineWidth   = 0.8 + (i/tl)*0.8;
+      ctx.stroke();
+    }
+
+    // head dot
+    const hdg = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,4);
+    hdg.addColorStop(0,`hsla(${140+p.hue},100%,90%,0.9)`);
+    hdg.addColorStop(1,'transparent');
+    ctx.fillStyle = hdg;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI*2); ctx.fill();
+  });
+
+  // readouts
+  const n = particles.length || 1;
+  g('activeCount').textContent = n;
+  g('avgVel').textContent      = (totalVel/n).toFixed(2);
+  g('fieldE').textContent      = (totalField/n).toFixed(2);
+  g('tDisp').textContent       = t.toFixed(3);
+  g('entropyDisp').textContent = ((totalVel/n) * (+g('chaos').value+0.1)).toFixed(2);
+  g('pcBadge').textContent     = String(n).padStart(3,'0');
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+createParticles(25);
+showTerminal(1);
+animate();
+</script>
+</body>
+</html>
