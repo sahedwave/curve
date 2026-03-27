@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
 <title>KEK</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
@@ -26,6 +26,8 @@ body {
   background: var(--bg);
   color: var(--green);
   font-family: 'Share Tech Mono', monospace;
+  min-height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
   cursor: none;
 }
@@ -77,6 +79,7 @@ canvas { display: block; position: absolute; inset: 0; }
   display: flex; flex-direction: column;
   padding: 0;
   box-shadow: var(--glow);
+  transition: transform 0.28s ease, opacity 0.28s ease;
 }
 
 /* header bar */
@@ -259,6 +262,21 @@ input[type=range]:hover { background: var(--green2); }
 .top-item span { color: var(--green); margin-left: 6px; }
 .top-sep { width: 1px; height: 16px; background: var(--border); }
 .top-right { margin-left: auto; display: flex; gap: 16px; align-items: center; }
+.top-btn {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.top-btn.active {
+  border-color: var(--green);
+  color: var(--green);
+  box-shadow: 0 0 10px rgba(0,255,136,0.2);
+}
 
 /* blinking clock */
 #clock { font-family: 'VT323', monospace; font-size: 18px; color: var(--green); letter-spacing: 2px; }
@@ -271,6 +289,64 @@ input[type=range]:hover { background: var(--green2); }
   pointer-events: none; letter-spacing: 4px;
   line-height: 1;
 }
+
+.mobile-fab {
+  display: none;
+  position: fixed;
+  top: max(10px, calc(env(safe-area-inset-top) + 6px));
+  left: 10px;
+  z-index: 250;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0, 10, 5, 0.92);
+  color: var(--green);
+  font-family: 'Share Tech Mono', monospace;
+  box-shadow: var(--glow);
+}
+
+@media (max-width: 760px) {
+  body { cursor: auto; }
+  #cursor { display: none; }
+  .mobile-fab { display: flex; align-items: center; justify-content: center; }
+  #ui {
+    width: min(186px, 54vw);
+    height: 100dvh;
+  }
+  #ui.mobile-collapsed {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  #topbar {
+    left: min(186px, 54vw);
+    height: auto;
+    min-height: 36px;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 8px 12px;
+  }
+  body.ui-collapsed #topbar { left: 0; }
+  #terminal {
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    width: min(calc(100vw - 24px), 280px);
+  }
+  #pcBadge { display: none; }
+  .ver-grid { grid-template-columns: repeat(2,1fr); }
+  .panel-header,
+  .controls-body,
+  .panel-footer { padding-left: 12px; padding-right: 12px; }
+}
+
+@media (max-width: 520px) {
+  #ui { width: min(160px, 50vw); }
+  #topbar { left: min(160px, 50vw); }
+  .panel-title { font-size: 18px; }
+  .panel-title_0 { letter-spacing: 3px; }
+  .top-item.secondary,
+  .top-right .top-item { display: none; }
+}
 </style>
 </head>
 <body>
@@ -279,6 +355,7 @@ input[type=range]:hover { background: var(--green2); }
 <div id="vignette"></div>
 <div id="cursor"></div>
 <canvas id="canvas"></canvas>
+<button id="mobileUiToggle" class="mobile-fab" type="button">☰</button>
 
 <!-- LEFT PANEL -->
 <div id="ui">
@@ -363,10 +440,11 @@ input[type=range]:hover { background: var(--green2); }
 <div id="topbar">
   <div class="top-item">MODE <span id="modeLabel">HARMONIC</span></div>
   <div class="top-sep"></div>
-  <div class="top-item">T <span id="tDisp">0.000</span></div>
+  <div class="top-item secondary">T <span id="tDisp">0.000</span></div>
   <div class="top-sep"></div>
-  <div class="top-item">ENTROPY <span id="entropyDisp">0.00</span></div>
+  <div class="top-item secondary">ENTROPY <span id="entropyDisp">0.00</span></div>
   <div class="top-right">
+    <button class="top-btn" id="termToggleBtn" type="button">INFO</button>
     <div class="top-item">PATTERNA / SYS-6</div>
     <div class="top-sep"></div>
     <div id="clock">00:00:00</div>
@@ -404,6 +482,40 @@ document.querySelectorAll('button, input').forEach(el => {
   el.addEventListener('mouseleave', () => cursor.classList.remove('hover'));
 });
 
+const mobileUiToggle = document.getElementById('mobileUiToggle');
+const termToggleBtn = document.getElementById('termToggleBtn');
+let termOpen = false;
+function syncMobileUi() {
+  const mobile = window.matchMedia('(max-width: 760px)').matches;
+  if (!mobile) {
+    document.getElementById('ui').classList.remove('mobile-collapsed');
+    document.body.classList.remove('ui-collapsed');
+    mobileUiToggle.textContent = '☰';
+    return;
+  }
+  const collapsed = document.getElementById('ui').classList.contains('mobile-collapsed');
+  document.body.classList.toggle('ui-collapsed', collapsed);
+  mobileUiToggle.textContent = collapsed ? '☰' : '✕';
+}
+function syncTerminalButton() {
+  termToggleBtn.classList.toggle('active', termOpen);
+  termToggleBtn.textContent = termOpen ? 'CLOSE' : 'INFO';
+}
+
+mobileUiToggle.addEventListener('click', () => {
+  document.getElementById('ui').classList.toggle('mobile-collapsed');
+  syncMobileUi();
+});
+termToggleBtn.addEventListener('click', () => {
+  if (termOpen) closeTerminal();
+  else showTerminal(currentVersion, true);
+});
+if (window.matchMedia('(max-width: 760px)').matches) {
+  document.getElementById('ui').classList.add('mobile-collapsed');
+}
+syncMobileUi();
+syncTerminalButton();
+
 // ── CLOCK ───────────────────────────────────────────────────────────────────
 function updateClock() {
   const n = new Date();
@@ -417,7 +529,7 @@ setInterval(updateClock, 1000); updateClock();
 const canvas = document.getElementById('canvas');
 const ctx    = canvas.getContext('2d');
 function resize() { canvas.width = innerWidth; canvas.height = innerHeight; }
-window.addEventListener('resize', resize); resize();
+window.addEventListener('resize', () => { resize(); syncMobileUi(); }); resize();
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 let particles = [], t = 0, currentVersion = 1;
@@ -526,9 +638,9 @@ function drawGrid() {
 }
 
 // ── TERMINAL ─────────────────────────────────────────────────────────────────
-let termTimeout, termOpen = false, extraOpen = false;
+let termTimeout, extraOpen = false;
 
-function showTerminal(v) {
+function showTerminal(v, forceOpen = false) {
   const m = MODES[v];
   g('termTitle').textContent  = m.label;
   g('termType').textContent   = m.type;
@@ -540,9 +652,15 @@ function showTerminal(v) {
   g('termMoreBtn').textContent = '▶ EXPAND DETAIL';
   extraOpen = false;
 
+  if (window.matchMedia('(max-width: 760px)').matches && !forceOpen) {
+    syncTerminalButton();
+    return;
+  }
+
   const term = g('terminal');
   term.classList.add('show');
   termOpen = true;
+  syncTerminalButton();
   clearTimeout(termTimeout);
   termTimeout = setTimeout(() => { if(!extraOpen) closeTerminal(); }, 4000);
 }
@@ -550,6 +668,7 @@ function showTerminal(v) {
 function closeTerminal() {
   g('terminal').classList.remove('show');
   termOpen = false;
+  syncTerminalButton();
 }
 
 function toggleExtra() {
